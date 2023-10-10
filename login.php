@@ -20,6 +20,7 @@
             if ($result->num_rows > 0) {
                 $row = $result->fetch_assoc();
                 $user_name = $row['user_name'];
+                $user_id = $row['user_id'];
 
                 header("Location: owner_dashboard.php?user_name=$user_name");
                 exit();
@@ -32,11 +33,22 @@
                     AND password = '$password' 
                     AND position = '$position'";
             $result = $conn->query($sql);
-
+    
             if ($result->num_rows > 0) {
                 $row = $result->fetch_assoc();
                 $user_name = $row['user_name'];
-
+                $user_id = $row['user_id'];
+    
+                // ตรวจสอบว่าผู้ใช้นี้มีรายการสั่งซื้ออยู่แล้วหรือไม่
+                $sql_check_order = "SELECT * FROM `Order` WHERE `user_id` = $user_id";
+                $result_check_order = $conn->query($sql_check_order);
+    
+                if ($result_check_order->num_rows == 0) {
+                    // ถ้าไม่มีรายการสั่งซื้อ ให้สร้างบันทึกใหม่ในตาราง "Order"
+                    $sql_insert_order = "INSERT INTO `Order` (`user_id`) VALUES ($user_id)";
+                    $conn->query($sql_insert_order);
+                }
+    
                 header("Location: home.php?user_name=$user_name");
                 exit();
             } else {
@@ -52,14 +64,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login</title>
-    <link rel="stylesheet" href="css/style.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        body{
+            background-color: #820300 ;
+        }
+    </style>
 </head>
 <body>
-    <div class="container">
+    <div class="container-login">
         <div class="card-login">
             <div class="logo-login">
                 <img src="css/LOGOpizza.png" alt="">

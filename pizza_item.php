@@ -39,15 +39,45 @@ if (isset($_GET['pizza_id']) && isset($_GET['user_name'])) {
             // คำนวณราคารวม
             $total_price = $pizza_price + $size_price + $crust_price;
 
-            // เพิ่มข้อมูลรายการในตาราง Item
-            $sql_insert_item = "INSERT INTO Item (pizza_id, size_id, crust_id, Price)
-                                VALUES ($pizza_id, $size_id, $crust_id, $total_price)";
-            $result_insert_item = $conn->query($sql_insert_item);
+            // หาค่า order_id จากตาราง "Order" โดยใช้ user_name
+            $sql_find_order_id = "SELECT order_id FROM `Order` WHERE user_id = (SELECT user_id FROM User WHERE user_name = ?)";
+            $stmt_find_order_id = $conn->prepare($sql_find_order_id);
+            $stmt_find_order_id->bind_param("s", $user_name);
+            $stmt_find_order_id->execute();
+            $stmt_find_order_id->bind_result($order_id);
+            $stmt_find_order_id->fetch();
+            $stmt_find_order_id->close();
 
-            if ($result_insert_item === TRUE) {
-                echo '<div class="alert alert-success text-center" role="alert">บันทึกข้อมูลการเลือกพิซซ่าสำเร็จ!</div>';
+            // สร้างรายการใหม่ในตาราง "Item"
+            $sql_insert_item = "INSERT INTO Item (pizza_id, size_id, crust_id, price) VALUES (?, ?, ?, ?)";
+            $stmt_insert_item = $conn->prepare($sql_insert_item);
+            $stmt_insert_item->bind_param("iiid", $pizza_id, $size_id, $crust_id, $total_price);
+
+            if ($stmt_insert_item->execute()) {
+                // เมื่อเพิ่มรายการในตาราง Item สำเร็จ
+                // หาค่า item_id ที่เพิ่มล่าสุด
+                $item_id = $stmt_insert_item->insert_id;
+                $stmt_insert_item->close();
+
+                // กำหนดจำนวนที่เพิ่มในตะกร้าเป็น 1 ชิ้น
+                $amount = 1;
+
+                // เพิ่มข้อมูลรายการในตาราง "Basket"
+                $sql_insert_basket = "INSERT INTO Basket (order_id, item_id, amount) VALUES (?, ?, ?)";
+                $stmt_insert_basket = $conn->prepare($sql_insert_basket);
+                $stmt_insert_basket->bind_param("iii", $order_id, $item_id, $amount);
+
+                if ($stmt_insert_basket->execute()) {
+                    // เมื่อเพิ่มรายการในตะกร้าสำเร็จ
+                    echo '<div class="alert alert-success text-center" role="alert">เพิ่มสินค้าลงในตะกร้าสำเร็จ!</div>';
+                } else {
+                    // เมื่อมีข้อผิดพลาดในการเพิ่มรายการในตะกร้า
+                    echo '<div class="alert alert-danger text-center" role="alert">เกิดข้อผิดพลาดในการเพิ่มสินค้าลงในตะกร้า</div>';
+                }
+                $stmt_insert_basket->close();
             } else {
-                echo '<div class="alert alert-danger text-center" role="alert">เกิดข้อผิดพลาดในการบันทึกข้อมูลการเลือกพิซซ่า</div>';
+                // เมื่อมีข้อผิดพลาดในการเพิ่มรายการในตาราง Item
+                echo '<div class="alert alert-danger text-center" role="alert">เกิดข้อผิดพลาดในการเพิ่มสินค้าลงในระบบ</div>';
             }
         }
     } else {
@@ -60,6 +90,7 @@ if (isset($_GET['pizza_id']) && isset($_GET['user_name'])) {
 $conn->close();
 ?>
 
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -70,12 +101,14 @@ $conn->close();
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
     <title>Pizza Custom Page</title>
     <link rel="stylesheet" href="css/style.css">
+    
 </head>
 <body>
 <div class="navbar">
     <div class="logo">
-        <img src="css/LOGOpizza.png" alt="">
-    </div>
+         <a href="home.php?user_name=<?php echo $user_name; ?>">
+        <img src="css/LOGOpizza.png"alt="">
+     </div>
     <div class="basket">
         <a class="btn btn-basket" href="basket.php?user_name=<?php echo $user_name; ?>">
             <i class="bi bi-basket3-fill"></i>
@@ -90,12 +123,11 @@ $conn->close();
         </a>
     </div>
 </div>
-<div class="container-pizza_custom">
-    <div class="card-pizza-custom">
+<div class="container-pizza_item">
+    <div class="card-pizza_item">
         <?php
         echo "<img src='" . $pizzaData['pizza_image'] . "' alt='" . $pizza_name . "' style='max-width: 100%; height: auto;' />";
         echo "<h1>$pizza_name</h1>";
-        echo "<p>ราคา: ฿" . $pizza_price . "</p>";
 
         if (isset($pizzaData['detail'])) {
             echo "<p>รายละเอียด: " . $pizzaData['detail'] . "</p>";
@@ -120,8 +152,7 @@ $conn->close();
                         }
                         ?>
                     </select>
-                </div>
-                <div class="form-group">
+
                     <label for="crust_id">เลือกขอบ:</label>
                     <select id="crust_id" name="crust_id" class="form-control" required onchange="calculateTotalPrice()">
                         <?php
@@ -141,10 +172,13 @@ $conn->close();
                 <!-- เพิ่ม input hidden สำหรับราคาขนาดและขอบ -->
                 <input type="hidden" id="size_price" name="size_price" value="0">
                 <input type="hidden" id="crust_price" name="crust_price" value="0">
-                <div id="total_price">ราคารวม: ฿<?php echo $pizza_price; ?></div>
-                <div class="text-center">
-                    <button type="submit" class="btn btn-primary">ยืนยัน</button>
-                </div>
+                    <div class="card_total">
+                        <p>ราคารวมทั้งหมด</p>
+                        <div id="total_price" style="font-size: 2rem;  font-weight: bold; color: #4aa774;">฿<?php echo $pizza_price; ?></div>
+                    </div>
+                        <div class="text-center">
+                            <button type="submit" class="btn btn-primary">เพิ่มใส่ตะกร้า</button>
+                        </div>
             </form>
         </div>
     </div>
@@ -167,7 +201,7 @@ $conn->close();
         const pizzaPrice = <?php echo $pizza_price; ?>;
         const total = pizzaPrice + selectedSizePrice + selectedCrustPrice;
 
-        totalPriceDiv.innerText = `ราคารวม: ฿${total}`;
+        totalPriceDiv.innerText = `฿${total}`;
     }
 </script>
 </body>
